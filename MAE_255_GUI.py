@@ -35,7 +35,7 @@ flute_length = st.number_input("Flute length [m]",
                                value = 0.5)
 
 number_of_flutes = st.number_input("Number of flutes",
-                                   min_value = 1
+                                   min_value = 1,
                                    value = 2,
                                    step=1 # Specfies integer
 )
