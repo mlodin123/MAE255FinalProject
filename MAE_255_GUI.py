@@ -163,4 +163,4 @@ if st.button("Run Force Calculation and include slider"):
         plotter.add_axes()
         plotter.view_isometric()
 
-        stpyvista(plotter)
+        stpyvista(plotter, backend="html")
