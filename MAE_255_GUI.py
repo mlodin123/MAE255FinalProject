@@ -78,6 +78,7 @@ def parse_gcode(tool_path):
 
             # Split line into pieces
             # "G1 X5 Y2 Z0" into ["G1", "X5", "Y2", "Z0"]
+            line = line.replace(","," ")
             words = line.split()
 
             for word in words:
