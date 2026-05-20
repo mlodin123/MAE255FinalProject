@@ -1,7 +1,5 @@
 import streamlit as st # GUI library
 import numpy as np 
-import pyvista as pv # Handles 3D meshes and plotting
-from stpyvista import stpyvista
 
 # Create app title
 st.title("Force Calculator from cutter-workpiece engagement")
@@ -108,7 +106,7 @@ with open(file_path, "w") as f:
 
 st.success(f"Saved update to {file_path}")
 
-def run_force_calculation():
+def run_force_calculation(tool_path_points_ref):
     st.write("Running force calculation")
 
     # Find differential Area element
@@ -119,6 +117,27 @@ def run_force_calculation():
 
     # Find forces 
 
+    Fx_list = []
+    Fy_list = []
+    Fz_list = []
+
+    for point in tool_path_points_ref:
+
+        x = point[0]
+        y = point[1]
+        z = point[2]
+
+        # Force equations below
+
+        Fx = 0.1 * x
+        Fy = 0.1 * y
+        Fz = 0.1 * z
+
+        Fx_list.append(Fx)
+        Fy_list.append(Fy)
+        Fz_list.append(Fz)
+    
+    return Fx_list, Fy_list, Fz_list
 
 # Define button to run force calculation function above
 
@@ -130,37 +149,17 @@ if st.button("Run Force Calculation and include slider"):
     
         tool_path_points = parse_gcode(tool_path)
 
-        st.subheader("Toolpath Animation Slider")
+        Fx_list, Fy_list, Fz_list = run_force_calculation(tool_path_points)
 
-        frame = st.slider(
-            "Toolpath Frame",
-            min_value = 0,
-            max_value = len(tool_path_points) - 1,
-            value = 0,
-            step = 1
-        )
-    
-        current_tool_position = tool_path_points[frame]
+        force_plotting_data = {
+            "Fx": Fx_list,
+            "Fy": Fy_list,
+            "Fz": Fz_list
+        }
 
-        st.write("Current tool position:")
-        st.write(current_tool_position)
+        st.subheader("Forces Along Toolpath")
 
-        points = np.array(tool_path_points)
+        st.line_chart(force_plotting_data)
 
-        plotter = pv.Plotter(window_size=[800,600])
-
-        plotter.add_lines(points,width=3)
-
-        cutter_marker = pv.Cylinder(
-            center=current_tool_position,
-            direction=(0,0,1),
-            radius=tool_radius,
-            height=flute_length + handle_length,
-            resolution=60
-        )
-        plotter.add_mesh(cutter_marker)
-
-        plotter.add_axes()
-        plotter.view_isometric()
-
-        stpyvista(plotter, backend="client")
+    else:
+        st.error("No G-code toolpath file uploaded. Please upload now.")
