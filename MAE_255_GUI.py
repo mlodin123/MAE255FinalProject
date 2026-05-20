@@ -1,4 +1,3 @@
-
 import streamlit as st # GUI library
 import numpy as np 
 
@@ -34,6 +33,10 @@ helix_angle_radians = helix_angle_degrees * np.pi / 180
 flute_length = st.number_input("Flute length [m]",
                                value = 0.5)
 
+handle_length = st.number_input("Handle length [m]",
+                                value = 0.5)
+
+
 number_of_flutes = st.number_input("Number of flutes",
                                    min_value = 1,
                                    value = 2,
@@ -52,7 +55,19 @@ dtheta_deg = st.number_input("Angle spacing dtheta [deg]",
 
 dtheta_rad = dtheta_deg * np.pi / 180
 
-# Press Button to run force calculations
+file_path = "Tool_parameters.txt"
+
+
+with open(file_path, "w") as f:
+    f.write(str(tool_radius) + "\n")
+    f.write(str(helix_angle_degrees) + "\n")
+    f.write(str(flute_length) + "\n")
+    f.write(str(handle_length) + "\n")
+    f.write(str(number_of_flutes) + "\n")
+
+st.success(f"Saved update to {file_path}")
+
+
 
 def run_force_calculation():
     st.write("Running force calculation")
