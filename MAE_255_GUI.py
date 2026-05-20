@@ -51,3 +51,23 @@ dtheta_deg = st.number_input("Angle spacing dtheta [deg]",
 # Convert angular spacing from degrees to radians
 
 dtheta_rad = dtheta_deg * np.pi / 180
+
+# Press Button to run force calculations
+
+def run_force_calculation():
+    st.write("Running force calculation")
+
+    # Find differential Area element
+
+    dA = 0.01
+
+    st.write("Tool differential area element:",dA)
+
+    # Find forces 
+
+
+# Define button to run force calculation function above
+
+if st.button("Run Force Calculation"):
+
+    run_force_calculation()
