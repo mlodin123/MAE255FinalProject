@@ -1,5 +1,6 @@
 import streamlit as st # GUI library
 import numpy as np 
+import matplotlib.pyplot as plt
 
 # Create app title
 st.title("Force Calculator from cutter-workpiece engagement")
@@ -141,7 +142,7 @@ def run_force_calculation(tool_path_points_ref):
 
 # Define button to run force calculation function above
 
-if st.button("Run Force Calculation and include slider"):
+if st.button("Run Force Calculation"):
 
     run_force_calculation()
 
@@ -163,3 +164,19 @@ if st.button("Run Force Calculation and include slider"):
 
     else:
         st.error("No G-code toolpath file uploaded. Please upload now.")
+        
+# Button for plotting
+
+if st.button("Show Sample Plot"):
+
+    sample_array = np.ones(200)
+
+    fig, ax = plt.subplots()
+
+    ax.plot(sample_array,sample_array,color="blue")
+    ax.set_title("Sample Plot")
+    ax.set_xlabel("x axis")
+    ax.set_ylabel("y axis")
+    ax.grid(True)
+
+    st.pyplot(fig)
