@@ -1,6 +1,7 @@
 import streamlit as st # GUI library
 import numpy as np 
 import matplotlib.pyplot as plt
+import trimesh
 
 # Create app title
 st.title("Force Calculator from cutter-workpiece engagement")
@@ -9,13 +10,12 @@ st.title("Force Calculator from cutter-workpiece engagement")
 st.subheader("User uploaded files")
 
 bulk_media = st.file_uploader("Upload bulk media", 
-                              type=["step", "stp"] # Want exact CAD geometries, so only "step" and "stp" files
+                              type=["stl"] # Only accept stl file
 )
 
 tool_path = st.file_uploader("Upload toolpath",
                             type=["nc","gcode"] 
 )
-
 
 # User inputed values
 st.subheader("User inputed values")
@@ -43,7 +43,25 @@ number_of_flutes = st.number_input("Number of flutes",
                                    value = 2,
                                    step=1 # Specfies integer
 )
+lead_angle = st.number_input("Lead angle [deg]",
+                             value = 0)
+tilt_angle = st.number_input("Tilt angle [deg]",
+                             value=0)
 
+# Cutter Constants
+st.subheader("Cutter Constants")
+K_rc = st.number_input("K_rc",
+                       value = 1)
+K_re = st.number_input("K_re",
+                       value = 1)
+K_psic = st.number_input("K_psic",
+                         value = 1)
+K_psie = st.number_input("K_psie",
+                         value = 1)
+K_tc = st.number_input("K_tc",
+                       value = 1)
+K_te = st.number_input("K_te",
+                       value = 1)
 st.subheader("Discretization")
 dz = st.number_input("Axial Spacing along tool dz [m]",
                      value = 0.05
@@ -51,6 +69,16 @@ dz = st.number_input("Axial Spacing along tool dz [m]",
 dtheta_deg = st.number_input("Angle spacing dtheta [deg]",
                              value = 1
 )
+
+
+N_f = number_of_flutes
+gamma = helix_angle_degrees
+R = tool_radius
+
+lead_angle_rad = lead_angle * np.pi/180
+tilt_angle_rad = tilt_angle * np.pi/180
+lead = lead_angle_rad
+tilt = tilt_angle_rad
 
 # Convert angular spacing from degrees to radians
 
@@ -107,60 +135,171 @@ with open(file_path, "w") as f:
 
 st.success(f"Saved update to {file_path}")
 
-def run_force_calculation(tool_path_points_ref):
+# Calculate CWE area
+dA = tool_radius * dtheta_rad * dz
+
+# Functions for finding angles for transformation of forces for a given point
+# INPUT ANGLES IN RADIANS
+def psi_z(z,R,gamma):
+    # Give height z, tool radius R, and helix angle gamma
+    return z/(R*np.tan(gamma))
+
+def theta_nzN_f(n,z,N_f,R,gamma):
+    # Give flute index n, height z, number of flutes N_f, tool radius R, and helix angle gamma
+    return 2*np.pi*(n-1)/N_f - psi_z(z,R,gamma)
+
+# Functions for calculating transformation matrices
+
+def A(psi,theta):
+    # Input psi_z and theta_nzN_f functions above
+    matrix = np.array([
+                      [-np.sin(psi)*np.sin(theta), -np.cos(psi)*np.sin(theta), -np.cos(theta)],
+                      [np.sin(psi)*np.cos(theta), np.cos(psi)*np.cos(theta), -np.sin(theta)],
+                      [np.cos(psi), -np.sin(psi), 0]
+                      ])
+    return matrix
+
+def B(gamma):
+    matrix = np.array([
+                        [np.cos(gamma), -np.sin(gamma),0],
+                        [np.sin(gamma), np.cos(gamma), 0],
+                        [0, 0, 1]
+    ])
+    return matrix
+
+# T matrix to add lead and tilt angle later
+# Just assume we are in line with the global z axis
+
+def T(lead, tilt):
+    matrix = np.array([
+        [np.cos(lead), np.sin(tilt)*np.sin(lead), -np.cos(tilt)*np.sin(lead)],
+        [0, np.cos(tilt), np.sin(tilt)],
+        [np.sin(lead), -np.sin(tilt)*np.cos(lead), np.cos(tilt)*np.cos(lead)]
+    ])
+    return matrix
+
+def run_force_calculation(tool_path_points_ref,cylinder_points):
+    # Load bulk media
+    if bulk_media is not None:
+        bulk = trimesh.load_mesh(
+        bulk_media,
+        file_type="stl"
+        )
+
     st.write("Running force calculation")
 
     # Find differential Area element
 
-    dA = 0.01
+    dA = tool_radius * dtheta_rad * dz
 
     st.write("Tool differential area element:",dA)
 
-    # Find forces 
+    # Initialize force array
+    F_X = []
+    F_Y = []
+    F_Z = []
 
-    Fx_list = []
-    Fy_list = []
-    Fz_list = []
+    # Initialize CWE array
+    CWE_array = []
 
-    for point in tool_path_points_ref:
+    for tool_position in tool_path:
+        tool_position = np.array(tool_position) 
 
-        x = point[0]
-        y = point[1]
-        z = point[2]
+        # Translate cylinder points by first making a copy
+        cylinder_points_copy = cylinder_points.copy()
+        cylinder_points_copy_global = cylinder_points_copy + tool_position # Assume that the cutter is pointing downward
 
-        # Force equations below
+        # Find intersecting points and then calculate total CWE_area
+        engaged_points_boolean_mask = bulk.contains(cylinder_points_copy_global)
+        CWE_area = engaged_points_boolean_mask.sum()*dA
 
-        Fx = 0.1 * x
-        Fy = 0.1 * y
-        Fz = 0.1 * z
+        # Append to CWE array
+        CWE_array.append(CWE_area)
 
-        Fx_list.append(Fx)
-        Fy_list.append(Fy)
-        Fz_list.append(Fz)
+        #engaged_local_points = cylinder_points_copy[engaged_points_boolean_mask]
+        
+        # Calculate forces F_r, F_psi, and F_t for each point and then transform into F_X, F_Y, and F_Z
+        flute_counter = 0
+        flute_array = []
+
+        # Current F_X, F_Y, and F_Z forces
+        F_X_current = 0
+        F_Y_current = 0
+        F_Z_current = 0
+
+        for flute_points in flute_array:
+            flute_counter += 1
+            # Move helix point into global coordinates
+            global_flute_points = flute_points + tool_position
+
+            # Check intersection of helix points with stock
+            engaged_mask = bulk.contains(global_flute_points)
+
+            # Output engaged points in local coordinates
+            engaged_flute_points_local = flute_points[engaged_mask]
+            num_engaged_flute_points = engaged_flute_points_local.shape[0]
+
+            # Define new dA by distributing over flutes and then distributing over points
+            dA = (CWE_area/N_f)/num_engaged_flute_points
+
+            for local_flute_point in engaged_flute_points_local:
+                dF_r = K_rc*dA + K_re*dz
+                dF_psi = K_psic*dA + K_psie*dz
+                dF_t = K_tc*dA + K_te*dz
+
+                # Create force array
+                force_array = np.array([
+                    [dF_r],
+                    [dF_psi],
+                    [dF_t]
+                ])
+
+                # Get the z coordinate of the local flute point
+                z = local_flute_point[2]
+                psi = psi_z(z,R,gamma)
+                theta = theta_nzN_f(flute_counter,z,N_f,R,gamma)
+
+                # Calculate forces in global coordinates
+                dF_XYZ_array = T(lead,tilt) @ B(gamma) @ A(psi, theta) @ force_array
+
+                # Update forces
+                F_X_current += dF_XYZ_array[0,0] # Make sure we result in a scalar
+                F_Y_current += dF_XYZ_array[1,0]
+                F_Z_current += dF_XYZ_array[2,0] 
     
-    return Fx_list, Fy_list, Fz_list
+        # Update forces at current point in tool path
+
+        F_X.append(F_X_current)
+        F_Y.append(F_Y_current)
+        F_Z.append(F_Z_current)
+    
+    return F_X, F_Y, F_Z, CWE_array
 
 # Define button to run force calculation function above
 
-if st.button("Run Force Calculation"):
+# Get cylinder points here
+cylinder_points = []
 
-    run_force_calculation()
+if st.button("Run Force Calculation"):
 
     if tool_path is not None:
     
         tool_path_points = parse_gcode(tool_path)
 
-        Fx_list, Fy_list, Fz_list = run_force_calculation(tool_path_points)
+        Fx_list, Fy_list, Fz_list, CWE_array = run_force_calculation(tool_path_points,cylinder_points)
 
-        force_plotting_data = {
-            "Fx": Fx_list,
-            "Fy": Fy_list,
-            "Fz": Fz_list
-        }
+        # Size of tool_path
+        tool_path_size = tool_path_points.size[0]
 
-        st.subheader("Forces Along Toolpath")
+        tool_path_array_plot = np.arange(1, tool_path_size + 1)
 
-        st.line_chart(force_plotting_data)
+        # Plot graph of forces and CWE 
+
+        fix, ax = plt.subplots()
+        
+        ax.plot()
+
+
 
     else:
         st.error("No G-code toolpath file uploaded. Please upload now.")
