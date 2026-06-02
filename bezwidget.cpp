@@ -1,5 +1,4 @@
 #include <iostream>
-#include <cstdint>
 #include <concepts>
 #include <random>
 #include <vector>
@@ -12,11 +11,24 @@
 #include <cstring>
 #include <format>
 #include <algorithm>
+#include <iomanip>
+#include <sstream>
+#include <string_view>
 
 
 #define MAX_ROWS_COLUMNS 2000
 #define MAX_FACTORIAL 15
 #define MAX_IGS_HEADER_LENGTH 1024
+
+#define NUMBER_OF_DIGITS_PRINTED_FLOAT 8
+//#define NUMBER_OF_DIGITS_PRINTED_INT 7
+#define MAX_BEZIER_SURFACES_PER_IGS_FILE 10
+
+
+#define STRINGIFY_HELPER(x) #x
+#define STRINGIFY(x) STRINGIFY_HELPER(x)
+
+
 
 template<typename T>
 concept Numeric = std::integral<T> || std::floating_point<T>;
@@ -36,6 +48,52 @@ struct distribution_selector<T> {
 
 template <Numeric T>
 using Distribution = typename distribution_selector<T>::type;
+
+
+template<Numeric T>
+unsigned int CharCount(T num){
+	if constexpr (std::signed_integral<T>){
+		#ifdef NUMBER_OF_DIGITS_PRINTED_INT
+			return NUMBER_OF_DIGITS_PRINTED_INT + (num < 0)
+		#endif
+		if (num == 0){
+			return 1;
+		};
+		
+		
+		unsigned int exponent = 1 + (num < 0);
+		while ( (num /= 10) != 0){
+			exponent++;
+		};
+		return exponent;
+	
+	};
+	if constexpr (std::unsigned_integral<T>){
+		#ifdef NUMBER_OF_DIGITS_PRINTED_INT
+			return NUMBER_OF_DIGITS_PRINTED_INT
+		#endif
+
+		if (num == 0){
+			return 1;
+		};
+		unsigned int exponent = 1;
+		while ( (num /= 10) > 0){
+			exponent++;
+		};
+		return exponent;
+	};
+	if constexpr (std::floating_point<T>){
+		#ifndef NUMBER_OF_DIGITS_PRINTED_FLOAT
+		throw std::out_of_range("Max digits printed not defined\n");
+		#endif
+		return NUMBER_OF_DIGITS_PRINTED_FLOAT + (num < 0);
+
+	};
+	throw std::invalid_argument("Typename used was non-numerical\n");
+};
+
+
+
 
 template<Numeric T>
 struct Point2{
@@ -241,6 +299,10 @@ class MatrixOfPoints{
 	std::vector<PointType> data;
 
 	MatrixOfPoints(size_t r, size_t c) : rows(r), columns(c), data(r * c){};
+	MatrixOfPoints(){rows = 1; 
+		columns = 1; 
+		data.reserve(1);
+	}
 	PointType& operator()(size_t r, size_t c){ return data[r * columns + c];}; 
 
 	void FillRandomValues(PointType Dimensions, PointType Delta, PointType Center,std::mt19937& generator){
@@ -546,19 +608,24 @@ class BezierSurface{
 
 template<Numeric T>
 struct igsSurface{
-	uint32_t IGES_type;
-	uint32_t Pstart;
-	uint32_t External_schema;
-	uint32_t Default_wireframe;
-	uint32_t Layer;
-	size_t TransformationMatrixPtr;
+	size_t IGES_type;
+	size_t Pstart;
+	size_t External_schema = 0;
+	size_t LineFontPattern = 0;
+	size_t Layer = 0;
+	size_t View_Pointer = 0;
+	size_t TransformationMatrixPtr = 0;
     static constexpr const char* label_assoc = "00000000";
 	
-	uint32_t line_weight_number;
-	uint32_t color_number;
-	uint32_t FormNumber;
+	size_t Line_weight_number = 0;
+	size_t Color_number = 0;
+	size_t LineCount;
+	size_t FormNumber = 0;
+	//blank
+	//blank
 	char surfaceName[8];
 	MatrixOfPoints<T, Point4<T>> points;
+
 	
 };
 
@@ -567,18 +634,74 @@ template<Numeric T>
 struct igsData{
 	public:
 	std::string FullHeader;
-	std::string TITLE;
+	char TITLE[72] = {'\0'};
 	std::vector<igsSurface<T>> Surfaces;
 	FILE *igsFILE;
-
+	
 	inline void StringAdd(const char *str){
+
 	std::format_to(std::back_inserter(this->FullHeader), "{}H{},", std::strlen(str), str);
 	};
 
-	igsData(const char* Title,	const char* Name,	const char* SourceName,	const char* FileName,	const char* precisiondata,	const char* scale, const char* date,	const char* minimum_resolution,	const char* maximum_coordinate,	const char* author,	const char* organization,	const char* IGES_version, std::vector<igsSurface<T>> surfaces){
+	std::string knot(size_t num){
+		std::string temp;
+		for (size_t k = 0; k < num; k++){
+		temp.push_back('0');
+		temp.push_back(',');
+		};
+		for (size_t k = 0; k < num; k++){
+		temp.push_back('1');
+		temp.push_back(',');
+		};
+		return temp;
+	};
+	inline void BufferPointFill(std::stringstream& buffer, MatrixOfPoints<T, Point4<T>>& Points){
+		size_t i = 0;
+		size_t j = 0;
+		for (i = 0; i < Points.rows; i++){
+			for (j = 0; j < Points.columns; j++){
+				if constexpr (std::floating_point<T>){
+					buffer << std::format("{:0" STRINGIFY(NUMBER_OF_DIGITS_PRINTED_FLOAT) ".5f},", Points(i,j).w);
+				}
+				else {
+				#ifdef NUMBER_OF_MAX_DIGITS_PRINTED_INT
+				buffer << std::setfill('0');
+				buffer << std::setw(NUMBER_OF_DIGITS_PRINTED_INT) << Points(i,j).w << ",";
+				#else
+				buffer << Points(i,j).w << ",";
+				#endif
+				}
+			}
+		}
+		for (i = 0; i < Points.rows; i++){
+			for (j = 0; j < Points.columns; j++){
+				if constexpr (std::floating_point<T>){
+				buffer << std::format("{:0" STRINGIFY(NUMBER_OF_DIGITS_PRINTED_FLOAT) ".5f},", Points(i,j).x);
+				buffer << std::format("{:0" STRINGIFY(NUMBER_OF_DIGITS_PRINTED_FLOAT) ".5f},", Points(i,j).y);
+				buffer << std::format("{:0" STRINGIFY(NUMBER_OF_DIGITS_PRINTED_FLOAT) ".5f},", Points(i,j).z);
+				} 
+				else {
+				#ifdef NUMBER_OF_MAX_DIGITS_PRINTED_INT
+				buffer << std::setfill('0');
+				buffer << std::setw(NUMBER_OF_DIGITS_PRINTED_INT) << Points(i,j).x << ",";
+				buffer << std::setw(NUMBER_OF_DIGITS_PRINTED_INT) << Points(i,j).y << ",";
+				buffer << std::setw(NUMBER_OF_DIGITS_PRINTED_INT) << Points(i,j).z << ",";
+				#else
+				buffer << Points(i,j).x << ",";
+				buffer << Points(i,j).y << ",";
+				buffer << Points(i,j).z << ",";
+				#endif
+				}
 
+			}
+		}
+
+	};
+
+	igsData(const char* Title,	const char* Name,	const char* SourceName,	const char* FileName,	const char* precisiondata,	const char* scale, const char* date,	const char* minimum_resolution,	const char* maximum_coordinate,	const char* author,	const char* organization,	const char* IGES_version, std::vector<igsSurface<T>> surfaces){
+	Surfaces = surfaces;
 	FullHeader.reserve(MAX_IGS_HEADER_LENGTH);
-	TITLE = Title;
+	strcpy(TITLE, Title);
 	FullHeader = "1H,,1H;,";
 	StringAdd(Name);
 	StringAdd(SourceName);
@@ -598,41 +721,97 @@ struct igsData{
 	FullHeader += ",0;";
 
 	igsFILE = fopen(FileName, "w");
-	fprintf(igsFILE, "%-72sS%7d\n", TITLE, 1);
+
+	fprintf(igsFILE, "%-72sS%7zu\n", TITLE, 1zu);
 	size_t i = 0;
-	int line_idx = 1;
+	size_t line_idx = 1;
 	const char* raw_data = FullHeader.data();
-	for (i = 0; i < FullHeader.size(); i += 73){
-		int chunk_size = static_cast<int>(std::min( (size_t) 73, FullHeader.size() - i));
-        fprintf(igsFILE, "%.*s", chunk_size, raw_data + i);
-		fprintf(igsFILE, "G%7d\n", line_idx++);
-	};
-/* 
-	uint32_t IGES_type;
-	uint32_t Pstart;
-	uint32_t External_schema;
-	uint32_t Default_wireframe;
-	uint32_t Layer;
-	size_t TransformationMatrixPtr;
-    static constexpr const char* label_assoc = "00000000";
-	
-	uint32_t line_weight_number;
-	uint32_t color_number;
-	uint32_t FormNumber;
-	char surfaceName[8];
-	MatrixOfPoints<T, Point4<T>> points;
- *
- *
- *
- */
+
+	for (size_t i = 0; i < FullHeader.size(); i += 72) {
+    int chunk_size = static_cast<int>(std::min(72zu, FullHeader.size() - i));
+    
+    fprintf(igsFILE, "%.*s", chunk_size, raw_data + i);
+
+    if (chunk_size < 72) {
+        int spaces_needed = 72 - chunk_size;
+        if (spaces_needed > 0) {
+            fprintf(igsFILE, "%*c", spaces_needed, ' '); 
+        }
+        fprintf(igsFILE, "G%7zu\n", line_idx++); 
+    } 
+    else { 
+        fprintf(igsFILE, "G%7zu\n", line_idx++);
+    }
+	}
+
+
+	size_t G_line_count = line_idx;
+
+	fclose(igsFILE);
+	std::ofstream igsFILE_cpp(FileName, std::ios::app);
+
+	line_idx = 1;
+	std::stringstream buffer;
+	size_t d_index = 1;
 
 	for (i = 0; i < Surfaces.size(); i++){
+		size_t uctrl = Surfaces[i].points.rows - 1;
 
-		fprintf(igsFILE, "%8u", (unsigned int) Surfaces[i].IGES_type);
+		size_t vctrl = Surfaces[i].points.columns - 1;
+		Surfaces[i].Pstart = line_idx;
+		Surfaces[i].External_schema = 0;
+		Surfaces[i].LineFontPattern = 0;
+		Surfaces[i].Layer = 0;
+		Surfaces[i].View_Pointer = 0;
+		Surfaces[i].TransformationMatrixPtr = 0;
+		//
+		Surfaces[i].Line_weight_number = 0;
+		Surfaces[i].Color_number = 0;
+		const char bezsurfacestring[8] = "BEZSURF";
+		strcpy(Surfaces[i].surfaceName, bezsurfacestring);
+		
+		
+		Surfaces[i].LineCount = (CharCount<T>(Surfaces[i].IGES_type) + 1 + 2 * CharCount<T>(uctrl) + 2 * CharCount<T>(vctrl) + 4 + 5 + 5 + 2 * (uctrl + vctrl + 2) + (uctrl + 1) * (vctrl + 1) * (4 * CharCount<T>(Surfaces[i].points(0,0).x) + 1) ) / 64 + 1;
 
+		Surfaces[i].FormNumber = 0;
+		char spaces[18];
+		memset(spaces, ' ', 17); 
+		spaces[17] = '\0';  
+
+
+		igsFILE_cpp << std::setw(8) << Surfaces[i].IGES_type << std::setw(8) << Surfaces[i].Pstart << std::setw(8) << Surfaces[i].External_schema << std::setw(8) << Surfaces[i].LineFontPattern << std::setw(8) << Surfaces[i].Layer << std::setw(8) << Surfaces[i].View_Pointer << std::setw(8) << Surfaces[i].TransformationMatrixPtr << std::setw(8) << Surfaces[i].label_assoc << std::setw(8) << "0" << "D" << std::setw(7) << d_index++ << "\n";
+
+		igsFILE_cpp << std::setw(8) << Surfaces[i].IGES_type << std::setw(8) << Surfaces[i].Line_weight_number << std::setw(8) << Surfaces[i].Color_number << std::setw(8) << Surfaces[i].LineCount << std::setw(8) << Surfaces[i].FormNumber << spaces << Surfaces[i].surfaceName <<  std::setw(8) << 1 << "D" << std::setw(7) << d_index++ << "\n";
+
+		line_idx += Surfaces[i].LineCount;
+	};
+	line_idx = 1;
+	for (i = 0; i < Surfaces.size(); i++){
+		size_t uctrl = Surfaces[i].points.rows - 1;
+
+		size_t vctrl = Surfaces[i].points.columns - 1;
+
+		buffer << Surfaces[i].IGES_type << "," << uctrl << "," << vctrl << "," << uctrl << "," << vctrl << "," << 0 << "," <<  0 << "," << 0 << "," << 0 << "," << 0 << "," << knot(uctrl + 1) << knot(vctrl + 1);
+		BufferPointFill(buffer, Surfaces[i].points);
+		buffer << ";";
+		std::string_view view = buffer.view();
+		  for (size_t j = 0; j < view.size(); j += 64) {
+		            size_t chunk_size = std::min( 64uz, view.size() - j);
+					if (chunk_size == 64){
+		            igsFILE_cpp << view.substr(j, chunk_size) << std::setw(8) << 2 * i + 1 << "P" << std::setw(7) << line_idx++ << "\n"; 
+					} else {
+		            igsFILE_cpp << view.substr(j, chunk_size) << std::setw(72 - chunk_size) << 2 * i + 1 << "P" << std::setw(7) << line_idx++ << "\n"; 
+					};
+					
+		 }
+		
+	};
+	if (strlen(TITLE) > 71){
+		throw std::out_of_range("Title too long");
 	};
 
-
+	igsFILE_cpp << "S" << std::setw(7) << 1 << "G" << std::setw(7) << --G_line_count << "D" << std::setw(7) << 2 * Surfaces.size() << "P" << std::setw(7) << --line_idx << std::setw(41) << 'T' << std::setw(7) << 1;
+	std::cout<< "Surfaces.size = " << Surfaces.size();
 
 	};
 
@@ -658,7 +837,7 @@ class BezierIOstream {
 	std::ofstream fp;
 	CAD_File_type CurrentType;
 	T feedRate;
-	T offset;
+	T offset = 0;
 	BezierIOstream(BezierSurface<T, PointType> bs, T du, T dv, const char* name, BezierIOstream<T, PointType>::CAD_File_type tp1) : bezierSurface(bs), DU(du), DV(dv){ 
 	
 
@@ -701,8 +880,6 @@ int main(){
 	std::mt19937 generator(rd());
 
 
-
-
 	MatrixOfPoints<double, Point3<double>> MyMatrix(5, 4);
 	std::ifstream MyFile("points.txt");
 
@@ -711,6 +888,14 @@ int main(){
 	MatrixOfPoints<double, Point4<double>> ThisMatrix(6,5);
 	ThisMatrix.FillRandomValues({30, 40, 3, 1}, {0.5, 0.5, 0.2, 1}, {0,0,0, 1}, generator);
 	ThisMatrix.printData();
+	std::vector<igsSurface<double>> SomeSurfaces(1);
+	SomeSurfaces[0].points = ThisMatrix;
+	SomeSurfaces[0].IGES_type = 128;
+
+
+	//igsData(const char* Title,	const char* Name,	const char* SourceName,	const char* FileName,	const char* precisiondata,	const char* scale, const char* date,	const char* minimum_resolution,	const char* maximum_coordinate,	const char* author,	const char* organization,	const char* IGES_version, std::vector<igsSurface<T>> surfaces)
+	igsData("Randomly Generated Surface", "Workpiece", "Cpp", "GeneratedIgsFile.igs", "1,75,15,75,15,", "1", "20260601", "0.001", "1000", "Edgar_And_Mirwais", "UCDavis", "11", SomeSurfaces);
+
 
 
 
