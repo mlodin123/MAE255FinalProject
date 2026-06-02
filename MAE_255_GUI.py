@@ -70,7 +70,9 @@ dtheta_deg = st.number_input("Angle spacing dtheta [deg]",
                              value = 1
 )
 
-
+# Pass number of flutes N_f
+# helix angle gamma
+# tool radius R into appropriate variables
 N_f = number_of_flutes
 gamma = helix_angle_degrees
 R = tool_radius
@@ -135,9 +137,6 @@ with open(file_path, "w") as f:
 
 st.success(f"Saved update to {file_path}")
 
-# Calculate CWE area
-dA = tool_radius * dtheta_rad * dz
-
 # Functions for finding angles for transformation of forces for a given point
 # INPUT ANGLES IN RADIANS
 def psi_z(z,R,gamma):
@@ -167,7 +166,7 @@ def B(gamma):
     ])
     return matrix
 
-# T matrix to add lead and tilt angle later
+# T matrix. For flat end-mill most of the time lead=tilt=0
 # Just assume we are in line with the global z axis
 
 def T(lead, tilt):
@@ -185,6 +184,9 @@ def run_force_calculation(tool_path_points_ref,cylinder_points):
         bulk_media,
         file_type="stl"
         )
+    else: 
+        st.error("Please upload an STL file first")
+        return [],[],[],[]
 
     st.write("Running force calculation")
 
@@ -192,7 +194,7 @@ def run_force_calculation(tool_path_points_ref,cylinder_points):
 
     dA = tool_radius * dtheta_rad * dz
 
-    st.write("Tool differential area element:",dA)
+    st.write("Tool differential area element dA:",dA)
 
     # Initialize force array
     F_X = []
@@ -202,12 +204,25 @@ def run_force_calculation(tool_path_points_ref,cylinder_points):
     # Initialize CWE array
     CWE_array = []
 
-    for tool_position in tool_path:
+    # Create cutter mesh for boolean operation
+
+    cutter_mesh = trimesh.creation.cylinder(
+        radius=tool_radius,
+        height=flute_length,
+        sections = int(round(2*np.pi / dtheta_rad)) # Sections are angular 
+    )
+
+    # Move cutter so that bottom dead center is at (0,0,0)
+    cutter_mesh.apply_translation([0,0,flute_length/2])
+
+    for tool_position in tool_path_points_ref:
         tool_position = np.array(tool_position) 
 
         # Translate cylinder points by first making a copy
         cylinder_points_copy = cylinder_points.copy()
-        cylinder_points_copy_global = cylinder_points_copy + tool_position # Assume that the cutter is pointing downward
+
+        # Bottom dead center of cylinder is (0,0,0). Translate by adding global tool position
+        cylinder_points_copy_global = cylinder_points_copy + tool_position
 
         # Find intersecting points and then calculate total CWE_area
         engaged_points_boolean_mask = bulk.contains(cylinder_points_copy_global)
@@ -215,8 +230,6 @@ def run_force_calculation(tool_path_points_ref,cylinder_points):
 
         # Append to CWE array
         CWE_array.append(CWE_area)
-
-        #engaged_local_points = cylinder_points_copy[engaged_points_boolean_mask]
         
         # Calculate forces F_r, F_psi, and F_t for each point and then transform into F_X, F_Y, and F_Z
         flute_counter = 0
@@ -229,7 +242,7 @@ def run_force_calculation(tool_path_points_ref,cylinder_points):
 
         for flute_points in flute_array:
             flute_counter += 1
-            # Move helix point into global coordinates
+            # Move local helix point into global coordinates
             global_flute_points = flute_points + tool_position
 
             # Check intersection of helix points with stock
@@ -239,13 +252,17 @@ def run_force_calculation(tool_path_points_ref,cylinder_points):
             engaged_flute_points_local = flute_points[engaged_mask]
             num_engaged_flute_points = engaged_flute_points_local.shape[0]
 
+            # Avoid dividing by 0 if there are no engaged flute points
+            if num_engaged_flute_points == 0:
+                continue
+
             # Define new dA by distributing over flutes and then distributing over points
-            dA = (CWE_area/N_f)/num_engaged_flute_points
+            new_dA = (CWE_area/N_f)/num_engaged_flute_points
 
             for local_flute_point in engaged_flute_points_local:
-                dF_r = K_rc*dA + K_re*dz
-                dF_psi = K_psic*dA + K_psie*dz
-                dF_t = K_tc*dA + K_te*dz
+                dF_r = K_rc*new_dA + K_re*dz
+                dF_psi = K_psic*new_dA + K_psie*dz
+                dF_t = K_tc*new_dA + K_te*dz
 
                 # Create force array
                 force_array = np.array([
@@ -273,6 +290,25 @@ def run_force_calculation(tool_path_points_ref,cylinder_points):
         F_Y.append(F_Y_current)
         F_Z.append(F_Z_current)
     
+        # Update bulk media after current tool position
+        cutter_current = cutter_mesh.copy()
+        cutter_current.apply_translation(tool_position)
+
+        # Boolean operation if cutter intersects stock
+        if CWE_area > 0:
+            try:
+                bulk_cut = trimesh.boolean.difference(
+                    [bulk,cutter_current],
+                    engine="manifold"
+                )
+
+                # Update bulk with successful cut
+                if bulk_cut is not None:
+                    bulk = bulk_cut
+
+            except Exception as e:
+                st.warning(f"Boolean cut failed at tool position {tool_position}: {e}")
+
     return F_X, F_Y, F_Z, CWE_array
 
 # Define button to run force calculation function above
@@ -289,16 +325,57 @@ if st.button("Run Force Calculation"):
         Fx_list, Fy_list, Fz_list, CWE_array = run_force_calculation(tool_path_points,cylinder_points)
 
         # Size of tool_path
-        tool_path_size = tool_path_points.size[0]
+        tool_path_size = len(tool_path_points)
 
         tool_path_array_plot = np.arange(1, tool_path_size + 1)
 
-        # Plot graph of forces and CWE 
+        # Plot graph of forces 
 
-        fix, ax = plt.subplots()
+        fig, ax = plt.subplots()
         
-        ax.plot()
+        ax.plot(
+            tool_path_array_plot,
+            Fx_list,
+            label="Fx"
+        )
 
+        ax.plot(
+            tool_path_array_plot,
+            Fy_list,
+            label="Fy"
+        )
+
+        ax.plot(
+            tool_path_array_plot,
+            Fz_list,
+            label="Fz"
+        )
+
+        ax.set_title("Cutting Forces")
+        ax.set_xlabel("Toolpath point")
+        ax.set_ylabel("Force")
+        ax.grid(True)
+        ax.legend()
+
+        st.pyplot(fig)
+
+        # Plot graph of CWE
+
+        fig, ax = plt.subplots()
+
+        ax.plot(
+            tool_path_array_plot,
+            CWE_array,
+            label="CWE area"
+        )
+
+        ax.set_title("Cutter Workpiece Engagement Area")
+        ax.set_xlabel("Toolpath point")
+        ax.set_ylabel("Area")
+        ax.grid(True)
+        ax.legend()
+
+        st.pyplot(fig)
 
 
     else:
