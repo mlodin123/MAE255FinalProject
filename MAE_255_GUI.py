@@ -177,7 +177,32 @@ def T(lead, tilt):
     ])
     return matrix
 
-def run_force_calculation(tool_path_points_ref,cylinder_points):
+# Define de_casteljau function
+def de_casteljau_curve(points, weights, t):
+    points = np.array(points, dtype=float)
+    weights = np.array(weights, dtype=float)
+
+    # Convert to weighted control points
+
+    weighted_points = points * weights[:,None]  # Changes [1,2,1] to 
+                                                # [[1],
+                                                #  [2],
+                                                #  [1]]
+
+    for r in range(1, len(points)):
+        weighted_points[:-r] = (
+            (1 - t) * weight_points[:-r]
+            + t * weighted_points[1:len(points) - r + 1]
+        )
+
+        weights[:-r] = (
+            (1 - t) * weights[:-r]
+            + t * weights[1 : len(weights) - r + 1]
+        )
+    
+    return weighted_points[0] / weights [0]
+
+def run_force_calculation(tool_path_points_ref,cylinder_points, flute_array):
     # Load bulk media
     if bulk_media is not None:
         bulk = trimesh.load_mesh(
@@ -233,7 +258,6 @@ def run_force_calculation(tool_path_points_ref,cylinder_points):
         
         # Calculate forces F_r, F_psi, and F_t for each point and then transform into F_X, F_Y, and F_Z
         flute_counter = 0
-        flute_array = []
 
         # Current F_X, F_Y, and F_Z forces
         F_X_current = 0
@@ -313,13 +337,93 @@ def run_force_calculation(tool_path_points_ref,cylinder_points):
 
 # Define button to run force calculation function above
 
-# Get cylinder points here
-cylinder_points = []
 
 if st.button("Run Force Calculation"):
 
     if tool_path is not None:
+
+        # We will generate a circle using rational quadratic Bezier
+        # Then evaluate via De Casteljau
+        # and extrude in the z direction
+
+        # Define number of arc points 
+        # from dtheta_rad
+        num_arc_points = int(2 * np.pi / dtheta_rad)
+        num_quarter_points = num_arc_points // 4
+
+        # Define control points
+        P_list = np.array([
+            [1,0],
+            [1,1],
+            [0,1]
+        ])
+
+        # Define weights
+
+        weights = np.array([
+            1,
+            1 / np.sqrt(2),
+            1
+        ])
+
+        # Evaluate quarter circle points
+
+        quarter_points = []
+
+        for i in range(num_arc_points + 1): 
+            t = i / num_quarter_points # t in [0,1]
+            quarter_points.append(de_casteljau_curve(P_list, weights, t))
+
+        # Scale by radius
+        quarter_points = R * quarter_points
+
+        # Get points of entire circle by rotations
+        circle_points = []
+
+        for q in range(4): # range = [0,1,2,3]
+            # rotation angle [rad]
+            angle = q * np.pi/2
+
+            # rotation matrix
+            rotation_matrix = np.array([
+                [np.cos(angle),np.sin(angle)],
+                [-np.sin(angle), np.cos(angle)]
+            ])
+
+            if q == 0:
+                intermediate_points = quarter_points
+            else:
+                intermediate_points = quarter_points[1:] # skip first duplicate boundary point
+            
+            rotated_points = (rotation_matrix @ intermediate_points.T).T
+
+            circle_points.append(rotated_points)
     
+    circle_points = np.vstack(circle_points) # Concatenates vectors row-wise
+
+    # Remove final duplicate point
+
+    circle_points = circle_points[:-1]    # a[1:]   everything except first element
+                                          # a[:-1]  everything except last element
+                                          # a[:]    entire array
+                                          # a[1:-1] everything except first and last
+
+    # Extrude in z
+
+    z_values = np.arange(0,flute_length + dz, dz)
+
+    # Intialize cylinder points
+
+    cylinder_points = []
+    
+    for z in z_values:
+        for p in circle_points:
+            cylinder_points.append([p[0], p[1], z])
+    
+    cylinder_points = np.array(cylinder_points)
+
+    # Build flute_array below
+
         tool_path_points = parse_gcode(tool_path)
 
         Fx_list, Fy_list, Fz_list, CWE_array = run_force_calculation(tool_path_points,cylinder_points)
