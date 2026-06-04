@@ -14,6 +14,7 @@
 #include <iomanip>
 #include <sstream>
 #include <string_view>
+#include <array>
 
 
 #define MAX_ROWS_COLUMNS 2000
@@ -291,12 +292,23 @@ T get_random_number(std::mt19937 &generator, Dist& dist){
 	return dist(generator);
 };
 
+namespace Quartile{
+enum quartile{
+q1 = 1,
+q2 = 2,
+q3 = 3,
+q4 = 4,
+};
+};
+
+
 template<Numeric T, Point PointType>
 class MatrixOfPoints{
 	public:
 	size_t rows, columns;
 	
 	std::vector<PointType> data;
+
 
 	MatrixOfPoints(size_t r, size_t c) : rows(r), columns(c), data(r * c){};
 	MatrixOfPoints(){rows = 1; 
@@ -336,6 +348,45 @@ class MatrixOfPoints{
 			return;
 		};
 
+
+	};
+
+	void Cylinder(T R, T height, int q){
+		if constexpr (!IsPoint4<PointType>){
+			throw std::out_of_range("Cylinder can only be represented using rational bezier surface (Point4)\n");
+		};
+		rows = 3;
+	    columns = 2;
+	
+	    const T w = (T)0.70710678118654752440;
+	    const T pi = (T)3.14159265358979323846;
+	
+	    const int qi = static_cast<int>(q) - 1;
+	
+	    const T a0 = ((T)qi) * ((T)pi / (T)2);
+	    const T a1 = a0 + ((T)pi / (T)2);
+	
+	    const T c0 = std::cos(a0);
+	    const T s0 = std::sin(a0);
+	    const T c1 = std::cos(a1);
+	    const T s1 = std::sin(a1);
+	
+	    const T x0 = R * c0;
+	    const T y0 = R * s0;
+	
+	    const T x1 = R * (c0 + c1);
+	    const T y1 = R * (s0 + s1);
+	
+	    const T x2 = R * c1;
+	    const T y2 = R * s1;
+	
+	    this->operator()(0,0) = { x0, y0, (T)0.0,  (T)1 };
+	    this->operator()(1,0) = { x1, y1, (T)0.0,  w };
+	    this->operator()(2,0) = { x2, y2, (T)0.0,  (T)1 };
+	
+	    this->operator()(0,1) = { x0, y0, height,  (T)1 };
+	    this->operator()(1,1) = { x1, y1, height,  w };
+	    this->operator()(2,1) = { x2, y2, height,  (T)1 };
 
 	};
 
@@ -706,7 +757,7 @@ struct igsData{
 	StringAdd(Name);
 	StringAdd(SourceName);
 	StringAdd(FileName);
-	FullHeader += "4HGIES,";
+	FullHeader += "4HIGES,";
 	FullHeader += precisiondata;
 	FullHeader += scale;
 	FullHeader += ",2,2HMM,1,1.,";
@@ -753,7 +804,7 @@ struct igsData{
 	line_idx = 1;
 	std::stringstream buffer;
 	size_t d_index = 1;
-
+	
 	for (i = 0; i < Surfaces.size(); i++){
 		size_t uctrl = Surfaces[i].points.rows - 1;
 
@@ -779,9 +830,9 @@ struct igsData{
 		spaces[17] = '\0';  
 
 
-		igsFILE_cpp << std::setw(8) << Surfaces[i].IGES_type << std::setw(8) << Surfaces[i].Pstart << std::setw(8) << Surfaces[i].External_schema << std::setw(8) << Surfaces[i].LineFontPattern << std::setw(8) << Surfaces[i].Layer << std::setw(8) << Surfaces[i].View_Pointer << std::setw(8) << Surfaces[i].TransformationMatrixPtr << std::setw(8) << Surfaces[i].label_assoc << std::setw(8) << "0" << "D" << std::setw(7) << d_index++ << "\n";
+		igsFILE_cpp << std::setw(8) << Surfaces[i].IGES_type << std::setw(8) << Surfaces[i].Pstart << std::setw(8) << Surfaces[i].External_schema << std::setw(8) << Surfaces[i].LineFontPattern << std::setw(8) << Surfaces[i].Layer << std::setw(8) << Surfaces[i].View_Pointer << std::setw(8) << Surfaces[i].TransformationMatrixPtr << std::setw(8) << 0 << Surfaces[i].label_assoc << "D" << std::setw(7) << d_index++ << "\n";
 
-		igsFILE_cpp << std::setw(8) << Surfaces[i].IGES_type << std::setw(8) << Surfaces[i].Line_weight_number << std::setw(8) << Surfaces[i].Color_number << std::setw(8) << Surfaces[i].LineCount << std::setw(8) << Surfaces[i].FormNumber << spaces << Surfaces[i].surfaceName <<  std::setw(8) << 1 << "D" << std::setw(7) << d_index++ << "\n";
+		igsFILE_cpp << std::setw(8) << Surfaces[i].IGES_type << std::setw(8) << Surfaces[i].Line_weight_number << std::setw(8) << Surfaces[i].Color_number << std::setw(8) << Surfaces[i].LineCount << std::setw(8) << Surfaces[i].FormNumber << spaces << Surfaces[i].surfaceName <<  std::setw(8) << i + 1 << "D" << std::setw(7) << d_index++ << "\n";
 
 		line_idx += Surfaces[i].LineCount;
 	};
@@ -791,9 +842,9 @@ struct igsData{
 
 		size_t vctrl = Surfaces[i].points.columns - 1;
 
-		buffer << Surfaces[i].IGES_type << "," << uctrl << "," << vctrl << "," << uctrl << "," << vctrl << "," << 0 << "," <<  0 << "," << 0 << "," << 0 << "," << 0 << "," << knot(uctrl + 1) << knot(vctrl + 1);
+		buffer << Surfaces[i].IGES_type << "," << vctrl << "," << uctrl << "," << vctrl << "," << uctrl << "," << 0 << "," <<  0 << "," << 0 << "," << 0 << "," << 0 << "," << knot(vctrl + 1) << knot(uctrl + 1);
 		BufferPointFill(buffer, Surfaces[i].points);
-		buffer << ";";
+		buffer << "0.,1.,0.,1." << ";";
 		std::string_view view = buffer.view();
 		  for (size_t j = 0; j < view.size(); j += 64) {
 		            size_t chunk_size = std::min( 64uz, view.size() - j);
@@ -804,8 +855,11 @@ struct igsData{
 					};
 					
 		 }
+		  buffer.str("");
+		  buffer.clear();
 		
 	};
+
 	if (strlen(TITLE) > 71){
 		throw std::out_of_range("Title too long");
 	};
@@ -885,15 +939,21 @@ int main(){
 
 	MyFile >> MyMatrix;
 	MyMatrix.printData();
-	MatrixOfPoints<double, Point4<double>> ThisMatrix(6,5);
-	ThisMatrix.FillRandomValues({30, 40, 3, 1}, {0.5, 0.5, 0.2, 1}, {0,0,0, 1}, generator);
+	MatrixOfPoints<double, Point4<double>> ThisMatrix(6,4);
+	ThisMatrix.FillRandomValues({30, 40, 0, 1}, {0.5, 0.5, 10, 1}, {0,0,0, 1}, generator);
 	ThisMatrix.printData();
-	std::vector<igsSurface<double>> SomeSurfaces(1);
-	SomeSurfaces[0].points = ThisMatrix;
-	SomeSurfaces[0].IGES_type = 128;
+	std::vector<igsSurface<double>> SomeSurfaces(5);
+
+	std::vector<MatrixOfPoints<double, Point4<double>>> CylinderTemp(4, MatrixOfPoints<double, Point4<double>>(3,2));
+	for (int i = 1; i <= 4; i++){
+		CylinderTemp[i - 1].Cylinder(2, 10, i);
+		SomeSurfaces[i - 1].points = CylinderTemp[i - 1];
+		SomeSurfaces[i - 1].IGES_type = 128;
+	};
+	SomeSurfaces[4].points = ThisMatrix;
+	SomeSurfaces[4].IGES_type = 128;
 
 
-	//igsData(const char* Title,	const char* Name,	const char* SourceName,	const char* FileName,	const char* precisiondata,	const char* scale, const char* date,	const char* minimum_resolution,	const char* maximum_coordinate,	const char* author,	const char* organization,	const char* IGES_version, std::vector<igsSurface<T>> surfaces)
 	igsData("Randomly Generated Surface", "Workpiece", "Cpp", "GeneratedIgsFile.igs", "1,75,15,75,15,", "1", "20260601", "0.001", "1000", "Edgar_And_Mirwais", "UCDavis", "11", SomeSurfaces);
 
 
