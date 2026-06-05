@@ -134,6 +134,10 @@ with open(file_path, "w") as f:
     f.write(str(flute_length) + "\n")
     f.write(str(handle_length) + "\n")
     f.write(str(number_of_flutes) + "\n")
+    f.write(str(lead_angle) + "\n")
+    f.write(str(tilt_angle) + "\n")
+    f.write(str(dz) + "\n")
+    f.write(str(dtheta_deg) + "\n")
 
 st.success(f"Saved update to {file_path}")
 
@@ -399,30 +403,30 @@ if st.button("Run Force Calculation"):
 
             circle_points.append(rotated_points)
     
-    circle_points = np.vstack(circle_points) # Concatenates vectors row-wise
+        circle_points = np.vstack(circle_points) # Concatenates vectors row-wise
 
-    # Remove final duplicate point
+        # Remove final duplicate point
 
-    circle_points = circle_points[:-1]    # a[1:]   everything except first element
-                                          # a[:-1]  everything except last element
-                                          # a[:]    entire array
-                                          # a[1:-1] everything except first and last
+        circle_points = circle_points[:-1]    # a[1:]   everything except first element
+                                            # a[:-1]  everything except last element
+                                            # a[:]    entire array
+                                            # a[1:-1] everything except first and last
 
-    # Extrude in z
+        # Extrude in z
 
-    z_values = np.arange(0,flute_length + dz, dz)
+        z_values = np.arange(0,flute_length + dz, dz)
 
-    # Intialize cylinder points
+        # Intialize cylinder points
 
-    cylinder_points = []
-    
-    for z in z_values:
-        for p in circle_points:
-            cylinder_points.append([p[0], p[1], z])
-    
-    cylinder_points = np.array(cylinder_points)
+        cylinder_points = []
+        
+        for z in z_values:
+            for p in circle_points:
+                cylinder_points.append([p[0], p[1], z])
+        
+        cylinder_points = np.array(cylinder_points)
 
-    # Build flute_array below
+        # Build flute_array below
 
         tool_path_points = parse_gcode(tool_path)
 
@@ -436,7 +440,7 @@ if st.button("Run Force Calculation"):
         # Plot graph of forces 
 
         fig, ax = plt.subplots()
-        
+            
         ax.plot(
             tool_path_array_plot,
             Fx_list,
