@@ -202,7 +202,7 @@ def de_casteljau_curve(points, weights, t):
 
     for r in range(1, len(points)):
         weighted_points[:-r] = (
-            (1 - t) * weight_points[:-r]
+            (1 - t) * weighted_points[:-r]
             + t * weighted_points[1:len(points) - r + 1]
         )
 
