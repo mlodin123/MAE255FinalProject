@@ -75,11 +75,12 @@ dtheta_deg = st.number_input("Angle spacing dtheta [deg]",
 
 # Run Edgar's code below
 if st.button("Done"):
+    x = 1
 
 # Pass number of flutes N_f
 # helix angle gamma
 # tool radius R into appropriate variables
-N_f = number_of_flutes
+N_f = int(number_of_flutes)
 gamma = helix_angle_degrees
 R = tool_radius
 
