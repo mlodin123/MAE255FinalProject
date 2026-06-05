@@ -2,6 +2,9 @@ import streamlit as st # GUI library
 import numpy as np 
 import matplotlib.pyplot as plt
 import trimesh
+import subprocess
+import ctypes
+import os
 
 # Create app title
 st.title("Force Calculator from cutter-workpiece engagement")
@@ -69,6 +72,9 @@ dz = st.number_input("Axial Spacing along tool dz [m]",
 dtheta_deg = st.number_input("Angle spacing dtheta [deg]",
                              value = 1
 )
+
+# Run Edgar's code below
+if st.button("Done"):
 
 # Pass number of flutes N_f
 # helix angle gamma
@@ -484,7 +490,6 @@ if st.button("Run Force Calculation"):
         ax.legend()
 
         st.pyplot(fig)
-
 
     else:
         st.error("No G-code toolpath file uploaded. Please upload now.")
