@@ -675,6 +675,7 @@ struct igsSurface{
 	//blank
 	//blank
 	char surfaceName[8];
+	size_t isRational = 0;
 	MatrixOfPoints<T, Point4<T>> points;
 
 	
@@ -706,7 +707,7 @@ struct igsData{
 		};
 		return temp;
 	};
-	inline void BufferPointFill(std::stringstream& buffer, MatrixOfPoints<T, Point4<T>>& Points){
+	inline void BufferPointFill(std::stringstream& buffer, MatrixOfPoints<T, Point4<T>>& Points, size_t iges_type){
 		size_t i = 0;
 		size_t j = 0;
 		for (i = 0; i < Points.rows; i++){
@@ -746,6 +747,31 @@ struct igsData{
 
 			}
 		}
+		if (iges_type == 128){
+		buffer << "0.,1.,0.,1." << ";";
+		} else {
+		buffer << "0.,1.;";
+		};
+
+	};
+	inline void BufferParameterFieldBeginningFill(std::stringstream& buffer, igsSurface<T>& Surface){
+
+
+		size_t uctrl = Surface.points.rows - 1;
+
+		size_t vctrl = Surface.points.columns - 1;
+		
+		
+		buffer << Surface.IGES_type << ",";
+		if (Surface.IGES_type == 128){
+		buffer << vctrl << "," << uctrl << "," << vctrl << "," << uctrl << "," << 0 << "," <<  0 << "," << Surface.isRational << "," << 0 << "," << 0 << "," << knot(vctrl + 1) << knot(uctrl + 1);
+		return;
+		} 
+		else {
+		buffer << uctrl << "," << uctrl << "," << 0 << "," <<  0 << "," << Surface.isRational << "," << knot(uctrl + 1);
+		return;
+		}
+
 
 	};
 
@@ -809,6 +835,7 @@ struct igsData{
 		size_t uctrl = Surfaces[i].points.rows - 1;
 
 		size_t vctrl = Surfaces[i].points.columns - 1;
+		size_t iges_type = Surfaces[i].IGES_type;
 		Surfaces[i].Pstart = line_idx;
 		Surfaces[i].External_schema = 0;
 		Surfaces[i].LineFontPattern = 0;
@@ -818,11 +845,15 @@ struct igsData{
 		//
 		Surfaces[i].Line_weight_number = 0;
 		Surfaces[i].Color_number = 0;
-		const char bezsurfacestring[8] = "BEZSURF";
+		const char* bezsurfacestring = (iges_type == 128) ? "BEZSURF" : "BEZCURV";
 		strcpy(Surfaces[i].surfaceName, bezsurfacestring);
+
 		
 		
-		Surfaces[i].LineCount = (CharCount<T>(Surfaces[i].IGES_type) + 1 + 2 * CharCount<T>(uctrl) + 2 * CharCount<T>(vctrl) + 4 + 5 + 5 + 2 * (uctrl + vctrl + 2) + (uctrl + 1) * (vctrl + 1) * (4 * CharCount<T>(Surfaces[i].points(0,0).x) + 1) ) / 64 + 1;
+		Surfaces[i].LineCount = (CharCount<T>(Surfaces[i].IGES_type) + 1 + 2 * CharCount<T>(uctrl) + 2 + (2 * CharCount<T>(vctrl) + 2) * (iges_type == 128) + 3 + 3 + (2 + 2) * (iges_type == 128) + 2 * (uctrl + vctrl + 2) + (uctrl + 1) * (vctrl + 1) * (4 * CharCount<T>(Surfaces[i].points(0,0).x) + 1) + 6 + (iges_type == 128) * 5 ) / 64 + 1;
+
+
+
 
 		Surfaces[i].FormNumber = 0;
 		char spaces[18];
@@ -841,10 +872,9 @@ struct igsData{
 		size_t uctrl = Surfaces[i].points.rows - 1;
 
 		size_t vctrl = Surfaces[i].points.columns - 1;
+		BufferParameterFieldBeginningFill(buffer, Surfaces[i]);
 
-		buffer << Surfaces[i].IGES_type << "," << vctrl << "," << uctrl << "," << vctrl << "," << uctrl << "," << 0 << "," <<  0 << "," << 0 << "," << 0 << "," << 0 << "," << knot(vctrl + 1) << knot(uctrl + 1);
-		BufferPointFill(buffer, Surfaces[i].points);
-		buffer << "0.,1.,0.,1." << ";";
+		BufferPointFill(buffer, Surfaces[i].points, Surfaces[i].IGES_type);
 		std::string_view view = buffer.view();
 		  for (size_t j = 0; j < view.size(); j += 64) {
 		            size_t chunk_size = std::min( 64uz, view.size() - j);
@@ -865,7 +895,7 @@ struct igsData{
 	};
 
 	igsFILE_cpp << "S" << std::setw(7) << 1 << "G" << std::setw(7) << --G_line_count << "D" << std::setw(7) << 2 * Surfaces.size() << "P" << std::setw(7) << --line_idx << std::setw(41) << 'T' << std::setw(7) << 1;
-	std::cout<< "Surfaces.size = " << Surfaces.size();
+	std::cout<< "Surfaces.size = " << Surfaces.size() << "\n";
 
 	};
 
@@ -919,19 +949,36 @@ class BezierIOstream {
 
 int main(){
 	FILE *fp = fopen("Tool_parameters.txt", "r");
-	double R, gamma, Lf, Lh, Nflutes = 0;
+	double R, gamma, Lf, Lh, Nflutes, lead_angle, tilt_angle, dz, dtheta_deg = 0;
 	fscanf(fp, "%lf", &R);
 	fscanf(fp, "%lf", &gamma);
 	fscanf(fp, "%lf", &Lf);
 	fscanf(fp, "%lf", &Lh);
 	fscanf(fp, "%lf", &Nflutes);
+	fscanf(fp, "%lf", &lead_angle);
+	fscanf(fp, "%lf", &tilt_angle);
+	fscanf(fp, "%lf", &dz);
+	fscanf(fp, "%lf", &dtheta_deg);
 	std::cout << "Selected tool Radius: " << R << "\n";
 	std::cout << "Selected helix angle: " << gamma << "\n";
 	std::cout << "Selected flute length: " << Lf << "\n";
 	std::cout << "Selected handle length: " << Lh << "\n";
 	std::cout << "Selected Number of flutes: " << Nflutes << "\n";
+	std::cout << "Selected lead angle: " << lead_angle << "\n";
+	std::cout << "Selected tilt angle: " << tilt_angle << "\n";
+	std::cout << "Selected dz: " << dz << "\n";
+	std::cout << "Selected dtheta: " << dtheta_deg << "\n";
 	std::random_device rd;
 	std::mt19937 generator(rd());
+
+	const double k = 4.0 * (sqrt(2.0) -1 ) / 3.0;
+
+
+	
+
+
+
+
 
 
 	MatrixOfPoints<double, Point3<double>> MyMatrix(5, 4);
@@ -945,6 +992,9 @@ int main(){
 	std::vector<igsSurface<double>> SomeSurfaces(5);
 
 	std::vector<MatrixOfPoints<double, Point4<double>>> CylinderTemp(4, MatrixOfPoints<double, Point4<double>>(3,2));
+
+
+
 	for (int i = 1; i <= 4; i++){
 		CylinderTemp[i - 1].Cylinder(2, 10, i);
 		SomeSurfaces[i - 1].points = CylinderTemp[i - 1];
