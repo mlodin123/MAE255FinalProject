@@ -50,7 +50,7 @@ lead_angle = st.number_input("Lead angle [deg]",
                              value = 0)
 tilt_angle = st.number_input("Tilt angle [deg]",
                              value=0)
-Flute_Ratio = st.number_input("Flute Ratio [1-99%]",
+flute_ratio = st.number_input("Flute Ratio [1-99%]",
                               min_value=1,  # lower bound 1%
                               max_value=99, # upper bound 99%
                               value=1       # default 1%
@@ -80,7 +80,7 @@ dtheta_deg = st.number_input("Angle spacing dtheta [deg]",
 
 # Run Edgar's code below
 if st.button("Done"):
-    x = 1
+    cpp_execution_flag = 1
 
 # Pass number of flutes N_f
 # helix angle gamma
@@ -150,6 +150,7 @@ with open(file_path, "w") as f:
     f.write(str(tilt_angle) + "\n")
     f.write(str(dz) + "\n")
     f.write(str(dtheta_deg) + "\n")
+    f.write(str(flute_ratio) "\n")
 
 st.success(f"Saved update to {file_path}")
 
