@@ -50,6 +50,11 @@ lead_angle = st.number_input("Lead angle [deg]",
                              value = 0)
 tilt_angle = st.number_input("Tilt angle [deg]",
                              value=0)
+Flute_Ratio = st.number_input("Flute Ratio [1-99%]",
+                              min_value=1,  # lower bound 1%
+                              max_value=99, # upper bound 99%
+                              value=1       # default 1%
+)
 
 # Cutter Constants
 st.subheader("Cutter Constants")
