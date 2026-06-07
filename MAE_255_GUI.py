@@ -239,6 +239,7 @@ with open(file_path, "w") as f:
     f.write(str(tilt_angle) + "\n")
     f.write(str(dz) + "\n")
     f.write(str(dtheta_deg) + "\n")
+    f.write(str(flute_ratio) + "\n")
 
 st.success(f"Saved update to {file_path}")
 
