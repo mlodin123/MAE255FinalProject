@@ -1,3 +1,6 @@
 streamlit
 numpy
 matplotlib
+trimesh
+rtree
+manifold3d
