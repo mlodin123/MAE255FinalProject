@@ -58,18 +58,13 @@ Flute_Ratio = st.number_input("Flute Ratio [1-99%]",
 
 # Cutter Constants
 st.subheader("Cutter Constants")
-K_rc = st.number_input("K_rc",
-                       value = 1)
-K_re = st.number_input("K_re",
-                       value = 1)
-K_psic = st.number_input("K_psic",
-                         value = 1)
-K_psie = st.number_input("K_psie",
-                         value = 1)
-K_tc = st.number_input("K_tc",
-                       value = 1)
-K_te = st.number_input("K_te",
-                       value = 1)
+K_rc = st.number_input("K_rc", value = 1)
+K_re = st.number_input("K_re", value = 1)
+K_psic = st.number_input("K_psic", value = 1)
+K_psie = st.number_input("K_psie", value = 1)
+K_tc = st.number_input("K_tc", value = 1)
+K_te = st.number_input("K_te", value = 1)
+
 st.subheader("Discretization")
 dz = st.number_input("Axial Spacing along tool dz [m]",
                      value = 0.05
@@ -78,27 +73,121 @@ dtheta_deg = st.number_input("Angle spacing dtheta [deg]",
                              value = 1
 )
 
-# Run Edgar's code below
-if st.button("Done"):
-    x = 1
-
 # Pass number of flutes N_f
-# helix angle gamma
-# tool radius R into appropriate variables
 N_f = int(number_of_flutes)
-gamma = helix_angle_degrees
-R = tool_radius
 
+gamma = helix_angle_radians
+R = tool_radius
 lead_angle_rad = lead_angle * np.pi/180
 tilt_angle_rad = tilt_angle * np.pi/180
 lead = lead_angle_rad
 tilt = tilt_angle_rad
 
-# Convert angular spacing from degrees to radians
-
 dtheta_rad = dtheta_deg * np.pi / 180
 
 file_path = "Tool_parameters.txt"
+
+# Define de_casteljau function
+def de_casteljau_curve(points, weights, t):
+    points = np.array(points, dtype=float)
+    weights = np.array(weights, dtype=float)
+
+    # Convert to weighted control points
+
+    weighted_points = points * weights[:,None]  # Changes [1,2,1] to 
+                                                # [[1],
+                                                #  [2],
+                                                #  [1]]
+
+    for r in range(1, len(points)):
+        weighted_points[:-r] = (
+            (1 - t) * weighted_points[:-r]
+            + t * weighted_points[1:len(points) - r + 1]
+        )
+
+        weights[:-r] = (
+            (1 - t) * weights[:-r]
+            + t * weights[1 : len(weights) - r + 1]
+        )
+    
+    return weighted_points[0] / weights [0]
+
+# Run Edgar's code below
+# Code for Bezier helix
+
+def generate_bezier_helix_curve(R,H,gamma, theta_phase, delta_t,dz):
+    alpha = 4.0 * np.tan(delta_t/ 4.0) / 3.0
+
+    num_segments = int(round(H / (R * np.tan(gamma) * delta_t)))
+
+    # Array for helix points
+    helix_points = []
+
+    for segment_idx in range(num_segments):
+        umin = segment_idx * delta_t
+        umax = (segment_idx + 1) * delta_t
+
+        umin_phase = umin + theta_phase
+        umax_phase = umax + theta_phase
+
+        # Define Control Points
+        P0 = np.array([
+            R * np.cos(umin_phase),
+            R * np.sin(umin_phase),
+            R * umin * np.tan(gamma)
+        ])
+
+        P1 = np.array([
+            R * np.cos(umin_phase) - alpha * R * np.sin(umin_phase),
+            R * np.sin(umin_phase) + alpha * R * np.cos(umin_phase),
+            R * (umin + alpha) * np.tan(gamma)
+        ])
+
+        P2 = np.array([
+            R * np.cos(umax_phase) + alpha * R * np.sin(umax_phase),
+            R * np.sin(umax_phase) - alpha * R * np.cos(umax_phase),
+            R * (umax - alpha) * np.tan(gamma)
+        ])
+
+        P3 = np.array([
+            R * np.cos(umax_phase),
+            R * np.sin(umax_phase),
+            R * umax * np.tan(gamma)
+        ])
+
+        control_points = np.array([P0,P1,P2,P3])
+        weights = np.ones(4)
+
+        segment_height = R * delta_t * np.tan(gamma)
+        points_per_segment = max(2, int(np.ceil(segment_height / dz)))
+        
+        for j in range(points_per_segment):
+            t = j / points_per_segment
+            point = de_casteljau_curve(control_points, weights, t)
+            helix_points.append(point)
+
+    return np.array(helix_points)
+    
+# Generate Flute array
+
+def generate_bezier_flute_array(R, H, gamma, N_f, delta_t, dz):
+    flute_array = []
+
+    for i in range(N_f):
+        theta_phase = i * 2 * np.pi / N_f
+
+        flute_points = generate_bezier_helix_curve(
+            R=R,
+            H=H,
+            gamma=gamma,
+            theta_phase=theta_phase,
+            delta_t = delta_t,
+            dz=dz
+        )
+
+        flute_array.append(flute_points)
+    
+    return flute_array
 
 # Parse user inputted g code file
 
@@ -150,6 +239,7 @@ with open(file_path, "w") as f:
     f.write(str(tilt_angle) + "\n")
     f.write(str(dz) + "\n")
     f.write(str(dtheta_deg) + "\n")
+    f.write(str(Flute_Ratio) + "\n")
 
 st.success(f"Saved update to {file_path}")
 
@@ -193,31 +283,6 @@ def T(lead, tilt):
     ])
     return matrix
 
-# Define de_casteljau function
-def de_casteljau_curve(points, weights, t):
-    points = np.array(points, dtype=float)
-    weights = np.array(weights, dtype=float)
-
-    # Convert to weighted control points
-
-    weighted_points = points * weights[:,None]  # Changes [1,2,1] to 
-                                                # [[1],
-                                                #  [2],
-                                                #  [1]]
-
-    for r in range(1, len(points)):
-        weighted_points[:-r] = (
-            (1 - t) * weighted_points[:-r]
-            + t * weighted_points[1:len(points) - r + 1]
-        )
-
-        weights[:-r] = (
-            (1 - t) * weights[:-r]
-            + t * weights[1 : len(weights) - r + 1]
-        )
-    
-    return weighted_points[0] / weights [0]
-
 def run_force_calculation(tool_path_points_ref,cylinder_points, flute_array):
     # Load bulk media
     if bulk_media is not None:
@@ -234,7 +299,6 @@ def run_force_calculation(tool_path_points_ref,cylinder_points, flute_array):
     # Find differential Area element
 
     dA = tool_radius * dtheta_rad * dz
-
     st.write("Tool differential area element dA:",dA)
 
     # Initialize force array
@@ -253,7 +317,7 @@ def run_force_calculation(tool_path_points_ref,cylinder_points, flute_array):
         sections = int(round(2*np.pi / dtheta_rad)) # Sections are angular 
     )
 
-    # Move cutter so that bottom dead center is at (0,0,0)
+    # Move cutter so that its bottom dead center is at (0,0,0)
     cutter_mesh.apply_translation([0,0,flute_length/2])
 
     for tool_position in tool_path_points_ref:
@@ -390,8 +454,8 @@ if st.button("Run Force Calculation"):
             t = i / num_quarter_points # t in [0,1]
             quarter_points.append(de_casteljau_curve(P_list, weights, t))
 
-        # Scale by radius
-        quarter_points = R * quarter_points
+        # Convert list to np.array then scale by radius
+        quarter_points = R * np.array(quarter_points)
 
         # Get points of entire circle by rotations
         circle_points = []
@@ -440,9 +504,23 @@ if st.button("Run Force Calculation"):
 
         # Build flute_array below
 
+        delta_t = np.pi / 2.0
+
+        flute_array = generate_bezier_flute_array(
+            R=tool_radius,
+            H=flute_length,
+            gamma=helix_angle_radians,
+            N_f=N_f,
+            delta_t=delta_t,
+            dz=dz
+        )
+
         tool_path_points = parse_gcode(tool_path)
 
-        Fx_list, Fy_list, Fz_list, CWE_array = run_force_calculation(tool_path_points,cylinder_points)
+        Fx_list, Fy_list, Fz_list, CWE_array = run_force_calculation(
+            tool_path_points,
+            cylinder_points,
+            flute_array)
 
         # Size of tool_path
         tool_path_size = len(tool_path_points)
