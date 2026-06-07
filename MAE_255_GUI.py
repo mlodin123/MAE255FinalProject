@@ -73,13 +73,6 @@ dtheta_deg = st.number_input("Angle spacing dtheta [deg]",
                              value = 1
 )
 
-<<<<<<< HEAD
-=======
-# Run Edgar's code below
-if st.button("Done"):
-    cpp_execution_flag = 1
-
->>>>>>> be7da7ca9a1f31426cf48b0c6aac9387bbcf6883
 # Pass number of flutes N_f
 N_f = int(number_of_flutes)
 
@@ -246,11 +239,6 @@ with open(file_path, "w") as f:
     f.write(str(tilt_angle) + "\n")
     f.write(str(dz) + "\n")
     f.write(str(dtheta_deg) + "\n")
-<<<<<<< HEAD
-    f.write(str(Flute_Ratio) + "\n")
-=======
-    f.write(str(flute_ratio) + "\n")
->>>>>>> be7da7ca9a1f31426cf48b0c6aac9387bbcf6883
 
 st.success(f"Saved update to {file_path}")
 
