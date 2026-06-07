@@ -118,7 +118,9 @@ def de_casteljau_curve(points, weights, t):
 def generate_bezier_helix_curve(R,H,gamma, theta_phase, delta_t,dz):
     alpha = 4.0 * np.tan(delta_t/ 4.0) / 3.0
 
-    num_segments = int(round(H / (R * np.tan(gamma) * delta_t)))
+    num_segments = max(1,
+                       int(np.ceil(H / (R * np.tan(gamma) * delta_t)))
+    )
 
     # Array for helix points
     helix_points = []
@@ -450,7 +452,7 @@ if st.button("Run Force Calculation"):
 
         quarter_points = []
 
-        for i in range(num_arc_points + 1): 
+        for i in range(num_quarter_points+ 1): 
             t = i / num_quarter_points # t in [0,1]
             quarter_points.append(de_casteljau_curve(P_list, weights, t))
 
